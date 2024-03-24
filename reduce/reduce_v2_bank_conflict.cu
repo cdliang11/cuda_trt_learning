@@ -6,7 +6,7 @@
 #define N 32*1024*1024    // 输入数据的长度
 #define BLOCK_SIZE 256    // 每个block的线程数，也就是一个block有8个wrap，每个block要计算的元素个数是256，一个warp有32个线程
 
-__global__ void reduce_kernel_v1_interleaved_address(float *g_idata, float *g_odata) {
+__global__ void reduce_kernel_v2_bank_conflict(float *g_idata, float *g_odata) {
   // 申请共享内存
   __shared__ float sdata[BLOCK_SIZE];
 
@@ -18,11 +18,9 @@ __global__ void reduce_kernel_v1_interleaved_address(float *g_idata, float *g_od
   __syncthreads();   // 同步， 这部分是一个潜在耗时的点
 
   // 在共享内存上做reduce
-  for (unsigned int s = 1; s < blockDim.x; s *= 2) {
-    // 交错寻址
-    int index = 2 * s * tid;
-    if (index < blockDim.x) {
-      sdata[index] += sdata[index + s];
+  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
+    if (tid < s) {
+      sdata[tid] += sdata[tid + s];
     }
     __syncthreads();  // 同步
   }
@@ -50,7 +48,7 @@ int main() {
 
   dim3 grid(N / BLOCK_SIZE, 1);   // 会自动在最后边补1  grid(N/BLOCK_SIZE, 1, 1)
   dim3 block(BLOCK_SIZE, 1);
-  reduce_kernel_v1_interleaved_address<<<grid, block>>>(input_device, output_device);
+  reduce_kernel_v2_bank_conflict<<<grid, block>>>(input_device, output_device);
   cudaMemcpy(output_device, output_host, block_num * sizeof(float), cudaMemcpyDeviceToHost);  // 从显存拷贝到主机内存
   return 0;
 }
