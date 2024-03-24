@@ -15,6 +15,8 @@ NVIDIA GTX1650 峰值带宽，CUDA版本为11.8
 
 以树形图的方式去执行数据累加，最终得到总和。但是由于GPU没有对global memory的同步操作，所以分成多个阶段的方式来避免global memory的操作。如下：
 
+![](pic/reduce_baseline.jpg)
+
 
 算法实现：
 ```c++
@@ -241,9 +243,11 @@ __global__ void reduce_kernel_v3_idle(float *g_idata, float *g_odata) {
 |      reduce_v3_idlc      |   4.15    |   75.28%   | 1.460  |
 
 
+> 官方博客中，该方式是有提升的，但是用gtx1650显卡实测的结果带宽利用率有提升，但是速度并没有提升。目前还不清楚原因是什么？
+
 ## 优化4 展开最后一个warp
 
-PPT20页
+![](pic/reduce_last_warp_unroll.jpg)
 
 意思是，对于reduce3，带宽利用率相比于理论带宽相差比较远，因为reduce操作不是算术密集型。因此，一个可能的瓶颈是指令的开销，这里的说的指令不是加载、存储或者给计算核心用的辅助指令。换句话说：这里的指令是地址算数指令和循环指令。
 
@@ -373,6 +377,7 @@ __global__ void reduce_kernel_v5_for_unrolled(float *g_idata, float *g_odata) {
 | reduce_v4_last_warp_unroll |   2.68    |   52.66%   | 2.261  |
 |     reduce_for_unroll      |   2.59    |   54.60%   | 2.340  |
 
+> 完全循环展开并没有明显的速度提升，并且带宽利用率提升也不明显。
 
 
 ## 优化6 调节blocksize和gridsize
